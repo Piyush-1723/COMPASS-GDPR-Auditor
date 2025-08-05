@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COMPASS - GDPR Privacy Policy Auditor</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<div class="cursor-follower"></div>
+
+<body>
+    <!-- Header Section -->
+    <header class="header">
+        <div class="nav-container">
+            <div class="logo">
+                <h1>🧭 COMPASS</h1>
+            </div>
+            <div class="project-name">
+                <h2>GDPR Privacy Policy Auditor</h2>
+                <p>AI-Powered Compliance Analysis</p>
+            </div>
+            <div class="about-link">
+                <a href="#about">About Us</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+        
+        <!-- Project Description Section -->
+        <section class="project-description">
+            <div class="description-content">
+                <h3>Comprehensive GDPR Compliance Analysis</h3>
+                <p>COMPASS automatically analyzes your privacy policies against GDPR requirements, identifying gaps and providing actionable recommendations to ensure full compliance with European data protection regulations.</p>
+                <div class="key-features">
+                    <div class="feature-item">✓ Article-by-article GDPR compliance checking</div>
+                    <div class="feature-item">✓ Risk assessment and scoring</div>
+                    <div class="feature-item">✓ Detailed compliance reports</div>
+                    <div class="feature-item">✓ Privacy-by-design architecture</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Analysis Interface -->
+        <div class="analysis-container">
+            <!-- Left Section: Steps/Instructions -->
+            <section class="steps-section">
+                <h3>How to Use COMPASS</h3>
+                <div class="steps-list">
+                    <div class="step-item">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>Choose Input Method</h4>
+                            <p>Select how you want to submit your privacy policy for analysis</p>
+                        </div>
+                    </div>
+                    <div class="step-item">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>Submit Your Policy</h4>
+                            <p>Upload document, paste URL, or enter text directly</p>
+                        </div>
+                    </div>
+                    <div class="step-item">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>Get Instant Analysis</h4>
+                            <p>Receive comprehensive GDPR compliance report with actionable insights</p>
+                        </div>
+                    </div>
+                    <div class="step-item">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h4>Download Results</h4>
+                            <p>Export detailed compliance report for your records</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Section: Input Methods -->
+            <section class="input-section">
+                <div class="input-window">
+                    <!-- Input Method Selection -->
+                    <div class="input-method-selection">
+                        <h3>Select Analysis Method</h3>
+                        <div class="method-tabs">
+                            <button class="method-tab active" data-method="url">📄 URL</button>
+                            <button class="method-tab" data-method="file">📁 Upload</button>
+                            <button class="method-tab" data-method="text">✏️ Text</button>
+                        </div>
+                    </div>
+
+                    <!-- URL Input -->
+                    <div class="input-method url-input active" id="url-method">
+                        <label for="policy-url">Privacy Policy URL</label>
+                        <div class="input-group">
+                            <input type="url" id="policy-url" placeholder="https://example.com/privacy-policy" required>
+                            <button type="button" class="analyze-btn" onclick="analyzeFromURL()">Analyze URL</button>
+                        </div>
+                        <small class="input-help">Enter the direct link to your privacy policy page</small>
+                    </div>
+
+                    <!-- File Upload -->
+                    <div class="input-method file-input" id="file-method">
+                        <label for="policy-file">Upload Privacy Policy Document</label>
+                        <div class="file-upload-area" id="file-drop-zone">
+                            <div class="upload-content">
+                                <div class="upload-icon">📄</div>
+                                <p>Drag and drop your file here or click to browse</p>
+                                <input type="file" id="policy-file" accept=".pdf,.doc,.docx,.txt" hidden>
+                                <button type="button" class="browse-btn" onclick="document.getElementById('policy-file').click()">Browse Files</button>
+                            </div>
+                        </div>
+                        <button type="button" class="analyze-btn" onclick="analyzeFromFile()" disabled id="file-analyze-btn">Analyze Document</button>
+                        <small class="input-help">Supported formats: PDF, DOC, DOCX, TXT (Max 10MB)</small>
+                    </div>
+
+                    <!-- Text Input -->
+                    <div class="input-method text-input" id="text-method">
+                        <label for="policy-text">Privacy Policy Text</label>
+                        <textarea id="policy-text" placeholder="Paste your privacy policy text here..." rows="8"></textarea>
+                        <div class="text-stats">
+                            <span id="char-count">0 characters</span>
+                            <span id="word-count">0 words</span>
+                        </div>
+                        <button type="button" class="analyze-btn" onclick="analyzeFromText()">Analyze Text</button>
+                        <small class="input-help">Paste the complete text of your privacy policy</small>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Submit Button -->
+        <section class="submit-section">
+            <button class="submit-compute-btn" onclick="startAnalysis()">
+                <span class="btn-text">Submit and Compute Result</span>
+                <span class="btn-icon">🚀</span>
+            </button>
+            <div class="privacy-notice">
+                <small>🔒 Your data is processed securely and never stored on our servers.</small>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer Section -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-section">
+                <h4>About COMPASS</h4>
+                <p>COMPASS is an AI-powered GDPR compliance auditor designed to help organizations ensure their privacy policies meet European data protection standards.</p>
+            </div>
+            <div class="footer-section">
+                <h4>Contact Information</h4>
+                <div class="contact-info">
+                    <p>📧 info@compass-gdpr.com</p>
+                    <p>🌐 www.compass-gdpr.com</p>
+                    <p>📍 European Union</p>
+                </div>
+            </div>
+            <div class="footer-section">
+                <h4>Legal & Privacy</h4>
+                <div class="footer-links">
+                    <a href="#privacy">Privacy Policy</a>
+                    <a href="#terms">Terms of Service</a>
+                    <a href="#gdpr">GDPR Compliance</a>
+                    <a href="#cookies">Cookie Policy</a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2025 COMPASS GDPR Auditor. Built with privacy by design.</p>
+        </div>
+    </footer>
+
+    <script src="javascript.js"></script>
+</body>
+</html>
