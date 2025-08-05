@@ -11,8 +11,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Download NLTK data during the build
-RUN python -m nltk.downloader punkt
-RUN python -m nltk.downloader punkt_tab
+RUN python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')"
 
 # Copy the rest of the application's code into the container
 COPY . .
