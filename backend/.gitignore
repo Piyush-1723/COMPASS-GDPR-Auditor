@@ -1,0 +1,12 @@
+# Python virtual environment
+venv/
+__pycache__/
+*.pyc
+
+# NLTK data (if downloaded inside project)
+nltk_data/
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store

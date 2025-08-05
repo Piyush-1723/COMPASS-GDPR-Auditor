@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - huggingface_cache:/root/.cache/huggingface
+      - nltk_data:/root/nltk_data
+
+volumes:
+  huggingface_cache:
+  nltk_data:
