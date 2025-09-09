@@ -1,24 +1,24 @@
-# Use an official Python runtime as a parent image
 FROM python:3.11-slim
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Copy the file that lists requirements
-COPY requirements.txt .
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc g++ git wget \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install any needed packages specified in requirements.txt
+# Try GPU PyTorch first, fallback to CPU
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 || \
+    pip install --no-cache-dir torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
+
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Download NLTK data during the build
-RUN python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')"
+# Download NLTK data
+RUN python -m nltk.downloader punkt
 
-# Copy the rest of the application's code into the container
 COPY . .
 
-# Make port 8000 available to the world outside this container
 EXPOSE 8000
 
-# Run main.py when the container launches
-# The --host 0.0.0.0 makes it accessible from outside the container
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
