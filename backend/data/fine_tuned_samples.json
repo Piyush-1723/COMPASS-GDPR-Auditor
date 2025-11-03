@@ -1,0 +1,32 @@
+{
+  "compliant": [
+    "We process personal data solely for clearly defined purposes and explain those purposes to our users.",
+    "Individuals may request access, correction, or deletion of their personal information through our privacy portal.",
+    "Data retention schedules ensure personal data is removed or anonymised once the original purpose has been fulfilled.",
+    "We implement encryption, access controls, and regular audits to keep personal data secure.",
+    "Consent preferences are stored with timestamps and users can withdraw consent at any time.",
+    "We only share data with processors who have signed GDPR-compliant agreements.",
+    "Privacy notices describe contact details for our Data Protection Officer and user rights.",
+    "Children's data is collected only with verified parental consent and limited to what is necessary."
+  ],
+  "ambiguous": [
+    "We may share information with trusted partners to improve our services.",
+    "Personal data is retained for as long as it remains useful to us.",
+    "Security measures are in place but we cannot guarantee complete protection.",
+    "Consent may be assumed when you continue to use the website.",
+    "We might use your information for additional purposes compatible with the original reason.",
+    "Third parties could receive information where appropriate.",
+    "We strive to honour data subject requests whenever practically possible.",
+    "Retention periods depend on business needs and legal requirements."
+  ],
+  "non_compliant": [
+    "We sell user data to advertisers without providing an opt-out mechanism.",
+    "Personal information may be collected and processed without prior notice.",
+    "Data is stored indefinitely even when it is no longer required.",
+    "We cannot respond to deletion requests or data access inquiries.",
+    "Consent banners are omitted because we set cookies automatically.",
+    "User data may be disclosed to partners regardless of consent status.",
+    "We do not provide users with a method to withdraw their consent.",
+    "Children's personal data may be shared for marketing purposes without verification."
+  ]
+}

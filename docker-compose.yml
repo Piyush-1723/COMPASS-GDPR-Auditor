@@ -7,6 +7,8 @@ services:
       - ./backend:/app
       - huggingface_cache:/root/.cache/huggingface
       - nltk_data:/root/nltk_data
+    # Request all GPUs when running with Docker Desktop + NVIDIA toolkit
+    gpus: all
     deploy:
       resources:
         reservations:
