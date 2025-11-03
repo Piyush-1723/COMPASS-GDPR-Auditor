@@ -1,22 +1,18 @@
-FROM python:3.11-slim
+FROM pytorch/pytorch:2.7.1-cuda11.8-cudnn9-runtime
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc g++ git wget \
-    && rm -rf /var/lib/apt/lists/*
-
-# Try GPU PyTorch first, fallback to CPU
-RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 || \
-    pip install --no-cache-dir torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
-
+# Copy requirements first for caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Python packages properly
+RUN python -m pip install --upgrade pip
+RUN python -m pip install --no-cache-dir -r requirements.txt
 
 # Download NLTK data
-RUN python -m nltk.downloader punkt
+RUN python -c "import nltk; nltk.download('punkt')"
 
+# Copy app files
 COPY . .
 
 EXPOSE 8000

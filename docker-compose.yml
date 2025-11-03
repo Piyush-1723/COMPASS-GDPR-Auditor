@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   backend:
     build: ./backend
@@ -13,7 +11,9 @@ services:
       resources:
         reservations:
           devices:
-            - capabilities: [gpu]  # use GPU if available
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
 volumes:
   huggingface_cache:
