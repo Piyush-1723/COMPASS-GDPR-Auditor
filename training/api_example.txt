@@ -1,0 +1,56 @@
+Example FastAPI app to load the trained model and expose POST /predict
+
+api_app.py
+--------------------------------
+from fastapi import FastAPI
+from pydantic import BaseModel
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import torch, numpy as np
+
+MODEL_DIR = "training/models/legalbert_3way"
+tok = AutoTokenizer.from_pretrained(MODEL_DIR)
+model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model.to(device)
+model.eval()
+
+class Item(BaseModel):
+    text: str
+
+app = FastAPI()
+
+@app.get("/health")
+def health():
+    return {
+        "cuda": torch.cuda.is_available(),
+        "torch": torch.__version__,
+        "device": device,
+        "model_dir": MODEL_DIR,
+    }
+
+@app.post("/predict")
+def predict(item: Item):
+    batch = tok([item.text], truncation=True, max_length=256, return_tensors="pt").to(device)
+    with torch.inference_mode():
+        logits = model(**batch).logits.detach().cpu().numpy()[0]
+    e = np.exp(logits - logits.max())
+    probs = e / e.sum()
+    label_id = int(probs.argmax())
+    id2label = model.config.id2label
+    return {
+        "label": id2label[label_id],
+        "confidence": float(probs[label_id]),
+        "scores": {id2label[i]: float(probs[i]) for i in range(len(probs))}
+    }
+
+Run
+--------------------------------
+# Windows PowerShell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install --index-url https://download.pytorch.org/whl/cu128 torch torchvision torchaudio
+pip install fastapi uvicorn transformers
+
+uvicorn api_app:app --reload
+curl http://127.0.0.1:8000/health
+curl -X POST http://127.0.0.1:8000/predict -H "Content-Type: application/json" -d "{\"text\":\"Your sample text\"}"

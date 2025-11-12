@@ -1,19 +1,33 @@
-"""Utility module for loading Legal-BERT and running lightweight compliance analysis."""
+"""Utility module for loading Legal-BERT.
+
+This module supports two classification modes:
+1) Fine-tuned classifier (preferred): If a local model directory is present
+    at backend/model_store/legalbert_3way (or MODEL_DIR env var), we load
+    AutoModelForSequenceClassification and return probability-based decisions.
+2) Prototype similarity (fallback): If no fine-tuned model is found, we use
+    an embedding-based prototype similarity approach.
+
+Both modes return the same ComplianceResult structure to keep the FastAPI
+endpoints stable.
+"""
 
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List
 
 import torch
 import torch.nn.functional as F
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoModelForSequenceClassification, AutoTokenizer
 
 MODEL_NAME = "nlpaueb/legal-bert-base-uncased"
 MAX_LENGTH = 512
 FINETUNED_PROTOTYPE_PATH = Path(__file__).resolve().parent / "data" / "fine_tuned_samples.json"
+# Local path where the trained classifier is expected to be mounted/copied
+DEFAULT_MODEL_DIR = Path(__file__).resolve().parent / "model_store" / "legalbert_3way"
 
 CATEGORY_COLORS: Dict[str, str] = {
     "compliant": "#2F855A",
@@ -147,7 +161,7 @@ class LegalComplianceClassifier:
 
         raw_similarity: Dict[str, float] = {}
         adjusted_similarity: Dict[str, float] = {}
-        top_prototype: Dict[str, float | str] = {}
+        top_prototypes: Dict[str, Dict[str, float | str]] = {}
         similarity_values: List[float] = []
         labels: List[str] = []
 
@@ -160,7 +174,7 @@ class LegalComplianceClassifier:
             raw_similarity[label] = mean_score
             adjusted_similarity[label] = calibrated_score
             best_idx = int(torch.argmax(sims))
-            top_prototype[label] = {
+            top_prototypes[label] = {
                 "text": self.prototype_texts[label][best_idx],
                 "similarity": float(sims[best_idx]),
             }
@@ -169,9 +183,9 @@ class LegalComplianceClassifier:
 
         score_tensor = torch.tensor(similarity_values)
         probabilities_tensor = torch.softmax(score_tensor, dim=0)
-        scores = {labels[idx]: float(probabilities_tensor[idx]) for idx in range(len(labels))}
+        scores: Dict[str, float] = {labels[idx]: float(probabilities_tensor[idx]) for idx in range(len(labels))}
 
-        status = max(scores, key=scores.get)
+        status = max(scores.items(), key=lambda kv: kv[1])[0]
 
         return ComplianceResult(
             status=status,
@@ -179,12 +193,87 @@ class LegalComplianceClassifier:
             scores=scores,
             raw_similarity=raw_similarity,
             adjusted_similarity=adjusted_similarity,
-            top_prototype=top_prototype[status],
+            top_prototype=top_prototypes[status],
+        )
+
+
+# --- Fine-tuned classifier support ---
+
+class ClassifierService:
+    """Loads a fine-tuned sequence classifier and provides prediction utilities."""
+
+    def __init__(self, model_dir: Path) -> None:
+        if not model_dir.exists() or not (model_dir / "config.json").exists():
+            raise FileNotFoundError(f"Model directory not found or missing config.json: {model_dir}")
+        self.model_dir = model_dir
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"--- Loading fine-tuned classifier from {self.model_dir} on {self.device.type.upper()} ---")
+        self.model = AutoModelForSequenceClassification.from_pretrained(str(self.model_dir)).to(self.device)
+        self.model.eval()
+        self.tokenizer = AutoTokenizer.from_pretrained(str(self.model_dir))
+
+        # Build label mappings from config (ensures alignment with training)
+        try:
+            cfg = self.model.config
+            self.id2label = {int(k): v for k, v in getattr(cfg, "id2label", {}).items()}
+            self.label2id = {k: int(v) for k, v in getattr(cfg, "label2id", {}).items()}
+        except Exception:
+            # Fallback to common ordering
+            labels = ["compliant", "ambiguous", "non_compliant"]
+            self.id2label = {i: l for i, l in enumerate(labels)}
+            self.label2id = {l: i for i, l in self.id2label.items()}
+
+    def predict_proba(self, texts: Iterable[str]) -> torch.Tensor:
+        if isinstance(texts, str):
+            texts = [texts]
+        text_list = list(texts)
+        if not text_list:
+            raise ValueError("No texts provided for prediction.")
+
+        tokens = self.tokenizer(
+            text_list,
+            padding=True,
+            truncation=True,
+            max_length=MAX_LENGTH,
+            return_tensors="pt",
+        )
+        tokens = {k: v.to(self.device) for k, v in tokens.items()}
+        with torch.no_grad():
+            logits = self.model(**tokens).logits
+            probs = torch.softmax(logits, dim=-1)
+        return probs.cpu()
+
+
+class ClassifierBasedCompliance:
+    """Classifier-backed compliance classification to match ComplianceResult shape."""
+
+    def __init__(self, service: ClassifierService) -> None:
+        self.service = service
+
+    def classify(self, text: str) -> ComplianceResult:
+        probs = self.service.predict_proba([text])[0]
+        scores: Dict[str, float] = {self.service.id2label[i]: float(probs[i]) for i in range(len(probs))}
+        status = max(scores.items(), key=lambda kv: kv[1])[0]
+        probability = scores[status]
+
+        # We don't have prototype info; surface the chosen label and prob
+        top_prototype = {"text": "N/A (fine-tuned classifier)", "similarity": probability}
+
+        # raw/adjusted similarity placeholders: use probabilities for both
+        return ComplianceResult(
+            status=status,
+            probability=probability,
+            scores=scores,
+            raw_similarity=scores,
+            adjusted_similarity=scores,
+            top_prototype=top_prototype,
         )
 
 
 _service: LegalBertService | None = None
-_classifier: LegalComplianceClassifier | None = None
+_proto_classifier: LegalComplianceClassifier | None = None
+_clf_service: ClassifierService | None = None
+_clf_classifier: ClassifierBasedCompliance | None = None
 
 
 def get_service() -> LegalBertService:
@@ -194,12 +283,46 @@ def get_service() -> LegalBertService:
     return _service
 
 
-def get_compliance_classifier() -> LegalComplianceClassifier:
-    global _classifier
-    if _classifier is None:
-        _classifier = LegalComplianceClassifier(get_service())
-    return _classifier
+def _resolve_model_dir() -> Path | None:
+    # Allow override via env var, else use default path under backend/model_store
+    env_path = os.getenv("MODEL_DIR")
+    if env_path:
+        p = Path(env_path).expanduser().resolve()
+        return p if p.exists() else None
+    return DEFAULT_MODEL_DIR if DEFAULT_MODEL_DIR.exists() else None
+
+
+def get_compliance_classifier():
+    """Return the best available classifier (fine-tuned if present, else prototype-based)."""
+    global _clf_classifier, _clf_service, _proto_classifier
+    # Prefer fine-tuned model when available
+    if _clf_classifier is None:
+        model_dir = _resolve_model_dir()
+        if model_dir is not None:
+            try:
+                _clf_service = ClassifierService(model_dir)
+                _clf_classifier = ClassifierBasedCompliance(_clf_service)
+                return _clf_classifier
+            except Exception as exc:
+                print(f"[WARN] Failed to initialize fine-tuned classifier: {exc}. Falling back to prototype mode.")
+
+    # Fallback to prototype classifier
+    if _proto_classifier is None:
+        _proto_classifier = LegalComplianceClassifier(get_service())
+    return _proto_classifier
 
 
 def get_legal_tokenizer() -> AutoTokenizer:
+    # Use classifier tokenizer if the fine-tuned model is active
+    if _clf_service is not None:
+        return _clf_service.tokenizer
     return get_service().tokenizer
+
+
+def get_active_ai_source() -> str:
+    """Return a short tag for the active AI decision source.
+
+    - "classifier": fine-tuned sequence classifier is active
+    - "prototype": prototype-similarity fallback is active
+    """
+    return "classifier" if _clf_classifier is not None else "prototype"

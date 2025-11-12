@@ -1,0 +1,11 @@
+Test Case ID,Description,Model Test Data,Expected Outcome,Actual Outcome,Status
+TC-001,Compliant consent and opt-out,We collect personal data only with explicit consent and allow opt-out at any time.,compliant,compliant (Confidence Score: 86%),Pass
+TC-002,Non-compliant data sale,We sell personal data to third parties without consent.,non_compliant,non_compliant (Confidence Score: 91%),Pass
+TC-003,Ambiguous vague policy,We may use your data for various purposes as needed.,ambiguous,ambiguous (Confidence Score: 72%),Pass
+TC-004,Automated decisions w/ weak redress,Automated decisions may affect your access; you can contact support for review.,ambiguous,non_compliant (Confidence Score: 69%),Fail
+TC-005,Borderline: anonymized sale mention,We may sell anonymized data to partners; personal data is never sold.,compliant,ambiguous (Confidence Score: 59%),Fail
+TC-006,Data retention specified,We retain your data for 30 days and then delete it permanently.,compliant,compliant (Confidence Score: 80%),Pass
+TC-007,No retention limit,We retain your data indefinitely for future analysis.,non_compliant,non_compliant (Confidence Score: 88%),Pass
+TC-008,Profiling without opt-out,We use automated profiling to make decisions without human review.,non_compliant,non_compliant (Confidence Score: 83%),Pass
+TC-009,Retention phrased as legal necessity,We retain certain logs as long as necessary to meet our legal obligations.,ambiguous,compliant (Confidence Score: 64%),Fail
+TC-010,Right to access explained,You can request access to your personal data at any time.,compliant,compliant (Confidence Score: 78%),Pass

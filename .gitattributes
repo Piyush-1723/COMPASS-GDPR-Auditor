@@ -1,0 +1,8 @@
+# Track large ML artifacts with Git LFS
+training/models/**/*.safetensors filter=lfs diff=lfs merge=lfs -text
+training/models/**/*.bin        filter=lfs diff=lfs merge=lfs -text
+training/models/**/*.pt         filter=lfs diff=lfs merge=lfs -text
+# (If you later place models under backend/)
+backend/model_store/**/*.safetensors filter=lfs diff=lfs merge=lfs -text
+backend/model_store/**/*.bin        filter=lfs diff=lfs merge=lfs -text
+backend/model_store/**/*.pt         filter=lfs diff=lfs merge=lfs -text

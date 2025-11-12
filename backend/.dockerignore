@@ -1,0 +1,11 @@
+# Keep Docker build context lean
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.ipynb_checkpoints/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.venv/
+**/.git/
+**/.gitignore
+**/.DS_Store

@@ -1,70 +1,131 @@
 # COMPASS - GDPR Privacy Policy Auditor
 
-COMPASS (Compliance Oriented Mapping & Privacy Assessment System) is an AI-assisted GDPR auditor that ingests privacy policies (PDF, DOCX, TXT, or URL) and produces a color-coded compliance report. The MVP demonstrates automated document segmentation, Legal-BERT powered analysis, and actionable summaries that distinguish compliant (green), ambiguous (yellow), and non-compliant (red) sections.
+COMPASS (Compliance Oriented Mapping & Privacy Assessment System) is an AI-assisted GDPR auditor that ingests privacy policies (PDF, DOCX, TXT, or URL) and produces a color-coded compliance report. It combines a fine‑tuned Legal‑BERT classifier with light rule indicators and exports a full PDF report.
 
 ## Features
 
-- **Hybrid chunking** that preserves the existing paragraph/sentence logic for robust clause segmentation.
-- **Legal-BERT prototype classifier** that scores each chunk as compliant, ambiguous, or non-compliant and surfaces the closest reference rationale.
-- **Rule-based GDPR detectors** that highlight high-risk keywords (e.g., "without consent") and adjust the final status when legal cues are present.
-- **API endpoints** for file uploads, raw text, and URL-based analysis, returning a structured JSON report with counts, confidence, and supporting evidence.
-- **Interactive frontend dashboard** that visualizes sections with green/yellow/red highlights, displays keyword chips, and lets users download the JSON report.
+- Hybrid chunking for robust clause segmentation.
+- Fine‑tuned Legal‑BERT classifier (primary decision source). Rule indicators are shown as context but do not override AI decisions.
+- HTML→PDF export powered by WeasyPrint for reliable Unicode wrapping and layout.
+- FastAPI endpoints for files, raw text, and URLs, returning structured JSON.
+- Simple frontend to upload, review results, and download the PDF report.
 
 ## Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) with optional NVIDIA GPU support for acceleration (COMPASS automatically falls back to CPU).
-- Python 3.10+ is required only if you plan to run the backend without Docker.
+- Docker Desktop (recommended) with NVIDIA GPU support for acceleration. The app automatically falls back to CPU.
+- If running outside Docker: Python 3.10+ and system libraries for WeasyPrint (Cairo/Pango/GDK‑PixBuf).
 
-## Quick Start
+## Model location (Option A – active)
 
-1. **Clone the repository**
+The fine‑tuned model is stored at `training/models/legalbert_3way/` and mounted into the backend container at `/app/model_store/legalbert_3way` via `docker-compose.yml`. You can replace this directory with your own model artifacts (config.json, model.safetensors, tokenizer files) without changing code.
 
-    ```powershell
-    git clone <your-repo-url>
-    cd COMPASS-GDPR-Auditor
-    ```
+Optional: You can set `MODEL_DIR` env var to point to a custom path inside the container; by default the mounted path is used when present.
 
-2. **Launch the backend (FastAPI + Legal-BERT)**
+## Run the stack
 
-    ```powershell
-    docker-compose up --build
-    ```
+1) Clone the repository
 
-    The first build downloads PyTorch, transformers, and the Legal-BERT weights; subsequent runs are much faster thanks to cached volumes.
+```powershell
+git clone <your-repo-url>
+cd COMPASS-GDPR-Auditor
+```
 
-3. **Open the API docs (optional)**
+2) Start the backend (FastAPI)
 
-    Visit [http://localhost:8000/docs](http://localhost:8000/docs) to experiment with:
+```powershell
+docker compose up --build
+```
 
-    - `POST /analyze/file`
-    - `POST /analyze/text`
-    - `POST /analyze/url`
+Backend will listen on http://localhost:8000
 
-    Each endpoint returns the structured report consumed by the frontend.
+3) Open API docs (optional)
 
-4. **Use the frontend dashboard**
+Visit http://localhost:8000/docs and try:
 
-    Serve the static files (any HTTP server works). For example:
+- POST /analyze/file
+- POST /analyze/text
+- POST /analyze/url
+- POST /report/pdf (export the full PDF report)
+- GET /report/pdf/test (tiny smoke test for PDF renderer)
+- GET /system/info (reports GPU availability, torch version, WeasyPrint/pydyf versions)
 
-    ```powershell
-    cd frontend
-    python -m http.server 5173
-    ```
+4) Run the frontend (static)
 
-    Open [http://localhost:5173](http://localhost:5173) in your browser, submit a privacy policy, and view the interactive compliance report. Ensure the backend is running at `http://localhost:8000` (the default API base URL).
+```powershell
+cd frontend
+python -m http.server 5173
+```
 
-## Output Overview
+Open http://localhost:5173 and point it at http://localhost:8000 for the API.
 
-Each response bundles:
+## Project structure
 
-- **Metadata** – source name, chunk count, runtime device, timestamps.
-- **Summary** – compliant/ambiguous/non-compliant totals, compliance ratio, and the most notable GDPR signals.
-- **Chunks** – per-section details including the final status, AI confidence, contributing rule matches, and the prototype snippet Legal-BERT used for similarity.
+```
+COMPASS-GDPR-Auditor/
+├─ docker-compose.yml            # Backend service and model mount
+├─ backend/
+│  ├─ Dockerfile                 # CUDA-enabled PyTorch base image + WeasyPrint libs
+│  ├─ main.py                    # FastAPI app + WeasyPrint PDF export
+│  ├─ model_loader.py            # Loads fine‑tuned classifier or prototype fallback
+│  ├─ data/
+│  │  └─ fine_tuned_samples.json # Prototype text (kept for fallback)
+│  ├─ requirements.txt
+│  └─ .dockerignore
+├─ frontend/
+│  ├─ index.html
+│  ├─ javascript.js
+│  └─ style.css
+├─ training/
+│  ├─ train.py, infer.py, *.csv  # Training code and datasets
+│  └─ models/
+│     └─ legalbert_3way/         # Final model artifacts mounted by compose
+└─ test_docs/                    # Sample inputs for quick testing
+```
 
-The frontend maps these statuses to the green/red/yellow visual scheme and provides a one-click JSON download for downstream reporting.
+## Environment variables
 
-## Future Enhancements
+- MODEL_DIR (optional): override the model path inside the container. By default, the model from `training/models/legalbert_3way` is mounted to `/app/model_store/legalbert_3way`.
 
-- Extend training data and prototype sets with domain-specific corpora or fine-tuned Legal-BERT checkpoints.
-- Generate full PDF/CSV exports with clause-level commentary.
-- Layer in additional jurisdictions (e.g., India’s DPDP Act) and rule+ML hybrid scoring.
+## File types supported
+
+- PDF (text extraction via pypdf)
+- DOCX (python-docx)
+- TXT (UTF‑8)
+- URL (HTML fetched and cleaned via BeautifulSoup)
+
+## PDF generation
+
+The app uses WeasyPrint for HTML→PDF export. System fonts (DejaVu) are installed in the Docker image, and styles ensure robust wrapping for long tokens and mixed Unicode. If you deploy outside Docker, install Cairo, Pango, and GDK‑PixBuf.
+
+## Troubleshooting
+
+- PDF engine smoke test: GET `/report/pdf/test` should return a small PDF.
+- Versions: GET `/system/info` shows `weasyprint_version` and `pydyf_version`.
+- GPU availability is reported under `gpu_available`; the app still works on CPU.
+
+## Git and large files
+
+Model weights can be large. Consider using Git LFS to store artifacts like `*.safetensors`:
+
+```powershell
+git lfs install
+git lfs track "training/models/**/model.safetensors"
+git add .gitattributes
+```
+
+This repository includes a `.gitignore` to exclude common caches (`__pycache__`, `.venv`, etc.) and a backend `.dockerignore` to keep Docker builds fast.
+
+## Development notes
+
+- The backend no longer uses fpdf2. WeasyPrint is the only PDF engine.
+- Rule indicators are kept for transparency; the final status is always AI‑driven.
+- Duplicate model directories were removed in favor of the mount at `training/models/legalbert_3way`.
+
+## Troubleshooting
+
+- If `/report/pdf` fails, check `/system/info` for WeasyPrint/pydyf versions. They should be compatible (this repo pins them).
+- If running with GPU, ensure NVIDIA runtime is enabled in Docker Desktop. The app still works on CPU.
+
+## License
+
+TBD.

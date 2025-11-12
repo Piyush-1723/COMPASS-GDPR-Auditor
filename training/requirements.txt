@@ -1,0 +1,13 @@
+# Training-only requirements (install in a local venv)
+# IMPORTANT: Do NOT pin torch here. Install the correct CUDA wheel separately.
+transformers>=4.44.0
+datasets>=2.20.0
+accelerate>=0.34.0
+evaluate>=0.4.2
+pandas>=2.2.0
+scikit-learn>=1.4.0
+numpy>=1.26.0
+
+# For the minimal API example
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0

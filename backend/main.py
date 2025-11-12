@@ -1,6 +1,7 @@
 import datetime as dt
 import io
 import re
+import unicodedata
 from typing import Any, Dict, List, Tuple
 
 import docx
@@ -11,15 +12,19 @@ from bs4 import BeautifulSoup
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from fpdf import FPDF
+from weasyprint import HTML, __version__ as weasy_version
+import importlib
+import inspect
 from pydantic import BaseModel, HttpUrl
 from pypdf import PdfReader
+from html import escape as html_escape
 
 from model_loader import (
     CATEGORY_COLORS,
     ComplianceResult,
     get_compliance_classifier,
     get_legal_tokenizer,
+    get_active_ai_source,
 )
 
 # --- NLTK resource management ---
@@ -219,20 +224,26 @@ def extract_text_from_txt(file_stream: io.BytesIO) -> str:
 
 # --- Hybrid chunking function ---
 def hybrid_chunking(text: str) -> list[str]:
+    """Split text into manageable chunks within model token limits.
+
+    Uses tokenizer.encode to count tokens (tokenizer.tokenize may be missing in some builds).
+    """
     load_model()
-    chunks = []
+    chunks: List[str] = []
     normalized_text = text.replace("\r\n", "\n")
     paragraphs = re.split(r"\n\s*\n", normalized_text)
 
     for paragraph in paragraphs:
-        if not paragraph.strip():
+        cleaned = paragraph.strip()
+        if not cleaned:
             continue
-        token_count = len(tokenizer.tokenize(paragraph))
-        if token_count <= MAX_TOKENS:
-            chunks.append(paragraph.strip())
+        # Rough token estimation using word count to avoid strict tokenizer dependency
+        word_count = len(cleaned.split())
+        if word_count <= 300:
+            chunks.append(cleaned)
         else:
-            sentences = nltk.sent_tokenize(paragraph)
-            chunks.extend(s.strip() for s in sentences)
+            sentences = nltk.sent_tokenize(cleaned)
+            chunks.extend(s.strip() for s in sentences if s.strip())
 
     return chunks
 
@@ -268,51 +279,62 @@ def collect_rule_matches(clause: str) -> List[Dict[str, str]]:
     return matches
 
 
-def determine_status(ai_status: str, rule_matches: List[Dict[str, str]]) -> Tuple[str, str]:
-    if rule_matches:
-        for priority in STATUS_PRIORITY:
-            for match in rule_matches:
-                if match["status"] == priority:
-                    reason = f"rule:{match['label']}:{match['keyword']}"
-                    return priority, reason
-    return ai_status, "ai:prototype"
+def determine_status(ai_status: str, _rule_matches: List[Dict[str, str]]) -> Tuple[str, str]:
+    """Always use the AI-driven decision; ignore rule overrides while retaining indicators."""
+    ai_src = get_active_ai_source()
+    return ai_status, f"ai:{ai_src}"
 
 
 def describe_status_source(source: str | None) -> str:
     if not source:
-        return "AI-driven classification"
-    if source.startswith("rule:"):
-        try:
-            _, label, keyword = source.split(":", 2)
-        except ValueError:
-            return "Rule-based decision"
-        readable = CLAUSE_LABEL_TITLES.get(label, label.replace("_", " ").title())
-        return f"Rule match • {readable} • '{keyword}'"
+        return "AI classifier"
     if source.startswith("ai:"):
-        return "Legal-BERT prototype similarity"
-    return "AI-driven classification"
+        _, _, mode = source.partition(":")
+        return "Fine-tuned AI classifier" if mode == "classifier" else "Prototype similarity model"
+    return "AI classifier"
 
 
 def safe_text(text: str) -> str:
+    if not text:
+        return ""
+
+    # Normalize common punctuation and whitespace variants
     replacements = {
-        "•": "-",
-        "–": "-",
-        "—": "-",
-        "“": '"',
-        "”": '"',
-        "’": "'",
+        "\u2022": "-",  # • bullet to hyphen
+        "\u2013": "-",  # – en dash
+        "\u2014": "-",  # — em dash
+        "\u201C": '"',   # “
+        "\u201D": '"',   # ”
+        "\u2019": "'",  # ’
+        "\u00A0": " ",  # NBSP to space
+        "\t": " ",      # tabs to space
+        "\u200B": "",   # zero-width space
+        "\u200C": "",   # zero-width non-joiner
+        "\u200D": "",   # zero-width joiner
+        "\u00AD": "-",  # soft hyphen to hyphen
     }
     sanitized = text
     for old, new in replacements.items():
         sanitized = sanitized.replace(old, new)
 
+    # Remove other control/format characters except newlines
+    sanitized = "".join(
+        ch if (ch in "\n\r" or not unicodedata.category(ch).startswith("C")) else ""
+        for ch in sanitized
+    )
+
+    # Collapse excessive whitespace
+    sanitized = re.sub(r"[ \f\v]+", " ", sanitized)
+
+    # Hard-break very long unbroken tokens to avoid width errors in fpdf2
     def breaker(match: re.Match[str]) -> str:
         token = match.group(0)
-        chunks = [token[i:i + 35] for i in range(0, len(token), 35)]
+        chunks = [token[i:i + 20] for i in range(0, len(token), 20)]
         return " ".join(chunks)
 
-    sanitized = re.sub(r"\S{60,}", breaker, sanitized)
-    return sanitized.encode("latin-1", "ignore").decode("latin-1")
+    sanitized = re.sub(r"\S{40,}", breaker, sanitized)
+
+    return sanitized
 
 
 def summarize_text(text: str, limit: int = 700) -> str:
@@ -325,23 +347,16 @@ def summarize_text(text: str, limit: int = 700) -> str:
     return f"{truncated}..."
 
 
-def hex_to_rgb(color: str) -> Tuple[int, int, int]:
-    value = color.lstrip("#")
-    if len(value) != 6:
-        return 45, 55, 72
-    return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+# (Removed unused hex_to_rgb helper after migrating fully to HTML/CSS PDF generation)
 
 
-def generate_pdf_report(report: Dict[str, Any]) -> bytes:
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.set_left_margin(15)
-    pdf.set_right_margin(15)
-    pdf.add_page()
 
-    base_text_color = (45, 55, 72)
-    accent_color = (44, 82, 130)
 
+def generate_pdf_report_weasy(report: Dict[str, Any]) -> bytes:
+    """Generate the full PDF report using WeasyPrint (HTML + CSS to PDF).
+
+    Designed to be robust against long words, mixed Unicode, and complex wrapping cases.
+    """
     metadata = report.get("metadata", {})
     summary = report.get("summary", {})
     status_counts = summary.get("status_counts", {})
@@ -349,142 +364,146 @@ def generate_pdf_report(report: Dict[str, Any]) -> bytes:
     flagged_keywords = summary.get("flagged_keywords", [])
     chunks = report.get("chunks", [])
 
-    generated_at = metadata.get("generated_at", dt.datetime.utcnow().isoformat())
-    generated_display = generated_at.replace("T", " ").replace("Z", " UTC")
+    generated_at = (metadata.get("generated_at") or dt.datetime.utcnow().isoformat()).replace("T", " ")
 
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.set_text_color(*base_text_color)
-    pdf.multi_cell(0, 8, safe_text("COMPASS GDPR Compliance Report"))
+    def esc(s: Any) -> str:
+        return html_escape(str(s) if s is not None else "")
 
-    pdf.set_font("Helvetica", "", 11)
-    pdf.set_text_color(71, 85, 105)
-    pdf.multi_cell(
-        0,
-        6,
-        safe_text(
-            f"Source: {metadata.get('source', 'Unknown source')} ({metadata.get('source_type', 'n/a')})"
-        ),
-    )
-    pdf.multi_cell(
-        0,
-        6,
-        safe_text(
-            f"Generated: {generated_display} • Sections analyzed: {metadata.get('chunk_count', 0)} • Device: {metadata.get('device', 'CPU')}"
-        ),
-    )
-    pdf.multi_cell(
-        0,
-        6,
-        safe_text(
-            f"Word count: {metadata.get('word_count', 0)} • Character count: {metadata.get('character_count', 0)}"
-        ),
-    )
-    pdf.ln(4)
+    # Build HTML
+    parts: List[str] = []
+    parts.append("""
+<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+    <meta charset=\"utf-8\" />
+    <title>COMPASS GDPR Compliance Report</title>
+    <style>
+        @page { size: A4; margin: 14mm 12mm; }
+        html, body { font-family: 'DejaVu Sans', 'Segoe UI', Arial, sans-serif; color: #2d3748; }
+        body { font-size: 11pt; line-height: 1.35; }
+        h1 { font-size: 18pt; margin: 0 0 6pt 0; }
+        h2 { font-size: 13pt; color: #2c5282; margin: 10pt 0 6pt 0; }
+        h3 { font-size: 11.5pt; margin: 8pt 0 4pt 0; }
+        p { margin: 4pt 0; }
+        small, .muted { color: #475569; }
+        .meta { color: #475569; font-size: 10pt; }
+        .chip { display: inline-block; padding: 1px 6px; border-radius: 6px; background: #f1f5f9; margin-right: 4px; }
+        .chip.red { color: #e11d48; }
+        .chip.yellow { color: #ca8a04; }
+        .chip.green { color: #16a34a; }
+        .section { break-inside: avoid; margin-bottom: 10pt; }
+        .block { break-inside: avoid; padding: 6pt 8pt; background: #fafafa; border: 1px solid #e5e7eb; border-radius: 6px; margin: 6pt 0; }
+        .kv { margin: 2pt 0; }
+        .list { margin: 2pt 0 2pt 10pt; padding: 0; }
+        .list li { margin: 2pt 0; }
+        .status-title { font-weight: bold; }
+        .byline { font-size: 9pt; color: #475569; }
+        .code { font-family: 'DejaVu Sans Mono', 'Consolas', monospace; font-size: 9.5pt; }
+        /* Robust wrapping for long tokens */
+        * { word-break: break-word; overflow-wrap: anywhere; }
+        pre, .pre { white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <header class=\"section\">
+        <h1>COMPASS GDPR Compliance Report</h1>
+        <div class=\"meta\">
+""")
+    parts.append(f"      <div>Source: {esc(metadata.get('source', 'Unknown'))} ({esc(metadata.get('source_type', 'n/a'))})</div>")
+    parts.append(f"      <div>Generated: {esc(generated_at)} • Sections analyzed: {esc(metadata.get('chunk_count', 0))} • Device: {esc(metadata.get('device', 'CPU'))}</div>")
+    parts.append(f"      <div>Word count: {esc(metadata.get('word_count', 0))} • Character count: {esc(metadata.get('character_count', 0))}</div>")
+    parts.append("    </div>\n  </header>\n")
 
-    def heading(title: str) -> None:
-        pdf.set_font("Helvetica", "B", 13)
-        pdf.set_text_color(*accent_color)
-        pdf.multi_cell(0, 7, safe_text(title))
-        pdf.set_font("Helvetica", "", 11)
-        pdf.set_text_color(*base_text_color)
-
-    heading("Overall compliance snapshot")
-    pdf.multi_cell(
-        0,
-        6,
-        safe_text(
-            f"Compliance ratio: {ratio * 100:.1f}% of sections are compliant"
-        ),
+    # Snapshot
+    parts.append("<section class=\"section\">")
+    parts.append("<h2>Overall compliance snapshot</h2>")
+    parts.append("<p>Compliance ratio: {pct:.1f}% of sections are compliant</p>".format(pct=ratio * 100))
+    parts.append(
+        "<p>Breakdown — "
+        "<span class=\"chip red\">Non-Compliant: {non}</span> "
+        "<span class=\"chip yellow\">Ambiguous: {amb}</span> "
+        "<span class=\"chip green\">Compliant: {comp}</span>".format(
+            non=int(status_counts.get("non_compliant", 0)),
+            amb=int(status_counts.get("ambiguous", 0)),
+            comp=int(status_counts.get("compliant", 0)),
+        )
     )
-    pdf.multi_cell(
-        0,
-        6,
-        safe_text(
-            "Breakdown — Non-Compliant: {non} • Ambiguous: {amb} • Compliant: {comp}".format(
-                non=status_counts.get("non_compliant", 0),
-                amb=status_counts.get("ambiguous", 0),
-                comp=status_counts.get("compliant", 0),
-            )
-        ),
-    )
-    pdf.ln(3)
+    parts.append("</section>")
 
-    heading("Flagged GDPR indicators")
+    # Flagged indicators
+    parts.append("<section class=\"section\">")
+    parts.append("<h2>Flagged GDPR indicators</h2>")
     if flagged_keywords:
-        pdf.set_font("Helvetica", "", 10)
+        parts.append("<ul class=\"list\">")
         for item in flagged_keywords:
-            label = CLAUSE_LABEL_TITLES.get(item.get("label", ""), item.get("label", "")).replace("_", " ").title()
+            label_key = str(item.get("label", "") or "")
+            label = (CLAUSE_LABEL_TITLES.get(label_key, label_key) or "").replace("_", " ").title()
             keywords = ", ".join(sorted(item.get("keywords", [])))
-            line = f"- {label}: {keywords} ({item.get('count', 0)} reference(s))"
-            pdf.multi_cell(0, 5, safe_text(line))
+            parts.append(
+                f"<li><span class=\"status-title\">{esc(label)}:</span> {esc(keywords)} ("
+                f"{int(item.get('count', 0))} reference(s))</li>"
+            )
+        parts.append("</ul>")
     else:
-        pdf.set_font("Helvetica", "", 10)
-        pdf.multi_cell(0, 5, safe_text("No GDPR risk keywords were flagged in this report."))
-    pdf.ln(4)
+        parts.append("<p class=\"muted\">No GDPR risk keywords were flagged in this report.</p>")
+    parts.append("</section>")
 
-    heading("Clause-by-clause analysis")
+    # Clause-by-clause
+    parts.append("<section class=\"section\">")
+    parts.append("<h2>Clause-by-clause analysis</h2>")
     if not chunks:
-        pdf.set_font("Helvetica", "", 10)
-        pdf.multi_cell(0, 5, safe_text("No clause segments available."))
+        parts.append("<p class=\"muted\">No clause segments available.</p>")
     else:
         for status in STATUS_PRIORITY:
-            status_chunks = [chunk for chunk in chunks if chunk.get("status") == status]
+            status_chunks = [c for c in chunks if c.get("status") == status]
             if not status_chunks:
                 continue
-
             status_title = f"{STATUS_TITLES.get(status, status.title())} sections ({STATUS_RISK_LEVEL.get(status, 'Medium')} risk)"
-            pdf.set_font("Helvetica", "B", 12)
-            pdf.set_text_color(*hex_to_rgb(CATEGORY_COLORS.get(status, "#2d3748")))
-            pdf.multi_cell(0, 6, safe_text(status_title))
-            pdf.set_text_color(*base_text_color)
-
+            color = CATEGORY_COLORS.get(status, "#2d3748")
+            parts.append(f"<h3 style=\"color:{esc(color)}\">{esc(status_title)}</h3>")
             for chunk in status_chunks:
-                pdf.set_font("Helvetica", "B", 11)
-                header_text = f"Section {chunk.get('id', '?')}"
-                pdf.multi_cell(0, 6, safe_text(header_text))
-
-                pdf.set_font("Helvetica", "", 10)
-                pdf.multi_cell(0, 5, safe_text(summarize_text(chunk.get("text", ""))))
-
-                pdf.set_font("Helvetica", "I", 9)
-                pdf.multi_cell(0, 5, safe_text(f"Decision basis: {describe_status_source(chunk.get('status_source'))}"))
-
-                articles = ", ".join(chunk.get("gdpr_articles", [])) or "Not specified"
-                pdf.set_font("Helvetica", "", 9)
-                pdf.multi_cell(0, 5, safe_text(f"GDPR articles: {articles}"))
-
-                recommendations = chunk.get("recommendations", [])
-                if recommendations:
-                    pdf.set_font("Helvetica", "B", 9)
-                    pdf.multi_cell(0, 5, safe_text("Recommended actions:"))
-                    pdf.set_font("Helvetica", "", 9)
-                    for rec in recommendations:
-                        pdf.multi_cell(0, 5, safe_text(f"- {rec}"))
-
+                parts.append("<div class=\"block\">")
+                parts.append(f"<div class=\"status-title\">Section {esc(chunk.get('id','?'))}</div>")
+                parts.append(f"<p class=\"pre\">{esc(summarize_text(chunk.get('text','')))}</p>")
+                parts.append(f"<p class=\"byline\">Decision basis: {esc(describe_status_source(chunk.get('status_source')))}</p>")
+                articles = ", ".join(chunk.get("gdpr_articles", []) ) or "Not specified"
+                parts.append(f"<p class=\"byline\">GDPR articles: {esc(articles)}</p>")
+                recs = chunk.get("recommendations", [])
+                if recs:
+                    parts.append("<div><span class=\"status-title\">Recommended actions:</span><ul class=\"list\">")
+                    for rec in recs:
+                        parts.append(f"<li>{esc(rec)}</li>")
+                    parts.append("</ul></div>")
                 rule_matches = chunk.get("rule_matches", [])
                 if rule_matches:
-                    pdf.set_font("Helvetica", "B", 9)
-                    pdf.multi_cell(0, 5, safe_text("Rule indicators:"))
-                    pdf.set_font("Helvetica", "", 9)
                     seen = set()
+                    items_html: List[str] = []
                     for match in rule_matches:
                         key = (match.get("label"), match.get("keyword"))
                         if key in seen:
                             continue
                         seen.add(key)
-                        label = CLAUSE_LABEL_TITLES.get(match.get("label", ""), match.get("label", "")).replace("_", " ").title()
-                        pdf.multi_cell(0, 5, safe_text(f"- {label}: '{match.get('keyword', '')}'"))
+                        label_key = str(match.get("label", "") or "")
+                        label = (CLAUSE_LABEL_TITLES.get(label_key, label_key) or "").replace("_", " ").title()
+                        items_html.append(f"<li>{esc(label)}: '{esc(match.get('keyword',''))}'</li>")
+                    if items_html:
+                        parts.append("<div><span class=\"status-title\">Rule indicators:</span><ul class=\"list\">")
+                        parts.extend(items_html)
+                        parts.append("</ul></div>")
+                parts.append("</div>")
+    parts.append("</section>")
 
-                pdf.ln(2)
+    # Footer
+    parts.append("<p class=\"byline\">Report generated by COMPASS GDPR Auditor</p>")
+    parts.append("</body></html>")
 
-            pdf.ln(1)
-
-    pdf.set_font("Helvetica", "I", 9)
-    pdf.set_text_color(100, 116, 139)
-    pdf.multi_cell(0, 5, safe_text("Report generated by COMPASS GDPR Auditor"))
-
-    pdf_bytes = pdf.output(dest="S").encode("latin-1")
-    return pdf_bytes
+    html_str = "".join(parts)
+    try:
+        pdf_bytes = HTML(string=html_str).write_pdf()
+        return pdf_bytes
+    except Exception as exc:
+        # Provide clearer error context
+        raise RuntimeError(f"WeasyPrint PDF generation failed: {type(exc).__name__}: {exc}") from exc
 def build_analysis_response(raw_text: str, source_name: str, source_type: str) -> Dict[str, Any]:
     if not raw_text.strip():
         raise HTTPException(status_code=400, detail="Document is empty after text extraction.")
@@ -634,11 +653,67 @@ def read_root():
 @app.get("/system/info")
 def system_info():
     gpu_available = torch.cuda.is_available()
+    # Attempt to introspect pydyf version for debugging PDF backend mismatch
+    try:
+        pydyf_mod = importlib.import_module("pydyf")
+        pydyf_version = getattr(pydyf_mod, "__version__", "unknown")
+        try:
+            pdf_cls = getattr(pydyf_mod, "PDF", None)
+            if pdf_cls is not None:
+                sig = inspect.signature(pdf_cls.__init__)
+                pydyf_pdf_init_params = len(sig.parameters)
+            else:
+                pydyf_pdf_init_params = "missing-PDF-class"
+        except Exception:
+            pydyf_pdf_init_params = "inspect-failed"
+    except Exception:
+        pydyf_version = "not-installed"
+        pydyf_pdf_init_params = "n/a"
+    try:
+        cssselect2_mod = importlib.import_module("cssselect2")
+        cssselect2_version = getattr(cssselect2_mod, "__version__", "unknown")
+    except Exception:
+        cssselect2_version = "not-installed"
+    try:
+        tinycss2_mod = importlib.import_module("tinycss2")
+        tinycss2_version = getattr(tinycss2_mod, "__version__", "unknown")
+    except Exception:
+        tinycss2_version = "not-installed"
     return {
         "gpu_available": gpu_available,
         "device": "GPU" if gpu_available else "CPU",
         "torch_version": torch.__version__,
+        "weasyprint_version": weasy_version,
+        "pydyf_version": pydyf_version,
+        "pydyf_pdf_init_params": pydyf_pdf_init_params,
+        "cssselect2_version": cssselect2_version,
+        "tinycss2_version": tinycss2_version,
     }
+
+
+@app.get("/report/pdf/test")
+def pdf_smoke_test():
+    """Generate a tiny PDF using WeasyPrint to validate the rendering pipeline."""
+    html_str = """
+    <!DOCTYPE html>
+    <html><head><meta charset=\"utf-8\" />
+    <style>@page { size: A4; margin: 15mm; } body { font-family: 'DejaVu Sans', Arial, sans-serif; }</style>
+    </head>
+    <body>
+      <h1>PDF smoke test</h1>
+      <p>This is a minimal WeasyPrint render test.</p>
+    </body></html>
+    """
+    try:
+        pdf_bytes = HTML(string=html_str).write_pdf()
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=f"WeasyPrint smoke test failed: {type(exc).__name__}: {exc}")
+    filename = f"compass-smoke-{dt.datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=\"{filename}\""},
+    )
 
 @app.post("/analyze/file")
 async def analyze_policy_file(file: UploadFile = File(...)):
@@ -689,7 +764,8 @@ def analyze_policy_url(payload: UrlAnalysisRequest):
 @app.post("/report/pdf")
 def export_pdf_report(report: PdfReportRequest):
     try:
-        pdf_bytes = generate_pdf_report(report.model_dump())
+        # Prefer robust HTML->PDF engine to avoid width errors
+        pdf_bytes = generate_pdf_report_weasy(report.model_dump())
     except Exception as exc:  # pragma: no cover - PDF generation issues are logged at runtime
         raise HTTPException(status_code=500, detail=f"Failed to render PDF report: {exc}") from exc
 

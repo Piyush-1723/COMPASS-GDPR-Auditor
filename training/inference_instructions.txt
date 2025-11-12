@@ -1,0 +1,32 @@
+Local training and inference (Windows PowerShell)
+
+1) Create and activate a virtual environment
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+
+2) Install PyTorch with CUDA 12.8 (for RTX 50xx). For CPU-only, see note below.
+   pip install --index-url https://download.pytorch.org/whl/cu128 torch torchvision torchaudio
+
+3) Install the remaining dependencies
+   pip install -r training\requirements.txt
+
+4) Train Legal-BERT (3-way)
+   python training\train.py --epochs 4 --batch_size 8 --lr 2e-5 --max_length 256
+
+   If you see "Attempting to unscale FP16 gradients" (fp16 scaler error), disable fp16:
+   python training\train.py --epochs 4 --batch_size 8 --lr 2e-5 --max_length 256 --no_fp16
+
+   Outputs:
+     - training\models\legalbert_3way\ (model + tokenizer)
+     - training\train_results.json (training summary)
+     - training\train.csv, training\dev.csv, training\test.csv (saved splits)
+     - training\models\legalbert_3way\eval_report.json
+     - training\models\legalbert_3way\confusion_matrix.csv
+     - training\models\legalbert_3way\top_misclassified.csv
+
+5) Run single-text inference
+   python training\infer.py --model_dir training\models\legalbert_3way --text "We do not sell data and you may withdraw consent at any time."
+
+CPU-only note
+   To use CPU instead of GPU, install CPU wheels:
+   pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision torchaudio

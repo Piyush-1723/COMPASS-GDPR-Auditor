@@ -5,6 +5,8 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      # Mount the fine-tuned model into the container so the backend can load it
+      - ./training/models/legalbert_3way:/app/model_store/legalbert_3way:ro
       - huggingface_cache:/root/.cache/huggingface
       - nltk_data:/root/nltk_data
     # Request all GPUs when running with Docker Desktop + NVIDIA toolkit

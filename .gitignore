@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Environments
+.venv/
+.env
+.env.*
+
+# Jupyter / experiments
+.ipynb_checkpoints/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node / frontend cache
+node_modules/
+
+# Build and coverage
+.dist/
+dist/
+build/
+coverage/
+.pytest_cache/
+
+# Local data
+*.log
+*.tmp
+.cache/
+
+# Model checkpts (keep final model under training/models/legalbert_3way)
+training/models/**/checkpoints/
+
+# (Intentionally keep .dockerignore files tracked)

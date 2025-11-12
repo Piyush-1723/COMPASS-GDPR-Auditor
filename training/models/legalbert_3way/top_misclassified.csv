@@ -1,0 +1,21 @@
+true,pred,text
+non_compliant,ambiguous,"If you provide us with your social media details, we may retrieve publicly available information about you from social media."
+non_compliant,compliant,please use the contact options of our company data privacy officer for this purpose.
+compliant,ambiguous,Our Service Providers.
+non_compliant,ambiguous,"Information we receive from you includes information you share with us, such as when you create an account on one of our websites."
+compliant,ambiguous,"we may pass on the information we have about you to other companies, retailers, financial organisations or other organisations specialising in the prevention of fraud and crime. We are sometimes obligated to disclose the information we have about customers to law enforcement agencies"
+ambiguous,compliant,you may contact us anytime to opt-out of: (i) direct marketing communications; (ii) automated decision-making and/or profiling; (iii) our collection of sensitive personal data; (iv) any new processing of your personal data that we may carry out beyond the original purpose; or (v) the transfer of your personal data outside the eea.
+ambiguous,non_compliant,"we are not currently processing your personal data for such type of automated decision-making, including profiling, but if we elect to do so in the future we will provide you with notice and choice, in accordance with eu data protection law."
+compliant,non_compliant,your choice entirely to provide us or not.
+non_compliant,ambiguous,"At Our Site You can be assured that Your Personally Identifiable Information is secure, consistent with current industry standards."
+compliant,ambiguous,You can also ask us to share your information in a usable format with another company
+non_compliant,compliant,We will only transfer your personal data to countries that have been found to provide an adequate level of protection for personal data.
+compliant,ambiguous,"We collect Personal Information from you when you voluntarily provide such information, such as when you contact us with inquiries, subscribe to our or a Privy End Customer’s e-mail newsletter, register for access to the Services or use certain Services."
+ambiguous,compliant,"If you prefer that we not share your personal information with Third Parties, please click here, and follow the instructions provided."
+non_compliant,ambiguous,"Update any hardware, software, or other tools that we provide in conjunction with the Comcast Web Services."
+compliant,ambiguous,We may also share your Personal Information with our affiliates for purposes consistent with this Policy.
+non_compliant,compliant,you can submit a data subject access request if you think that you have been legally or significantly affected as a result of automated decision making or profiling by us.
+compliant,ambiguous,"Your personal information is contained behind secured networks and is only accessible by a limited number of persons who have special access rights to such systems, and are required to keep the information confidential."
+ambiguous,compliant,"You sign up for e-mails, mobile messages, or social media notifications from Overstock.com."
+non_compliant,ambiguous,"however, if you choose not to provide the requested information, you may not be able to use some or all of the features of the site or services."
+ambiguous,compliant,"right of access to own personal data - the data subjects have the right to receive     from the “the site”, confirmation as to whether personal data related to them are     processed and if so, to be given access to the data and the following information:     purpose of the processing; respective personal data categories; personal data     recipients or categories of recipients, if any; the intention of the controller to transmit     personal data to a third party (where applicable); personal da"
