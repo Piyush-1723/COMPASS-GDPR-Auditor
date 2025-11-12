@@ -1,64 +1,64 @@
-# COMPASS - GDPR Privacy Policy Auditor
+# COMPASS – GDPR Privacy Policy Auditor
 
-COMPASS (Compliance Oriented Mapping & Privacy Assessment System) is an AI-assisted GDPR auditor that ingests privacy policies (PDF, DOCX, TXT, or URL) and produces a color-coded compliance report. It combines a fine‑tuned Legal‑BERT classifier with light rule indicators and exports a full PDF report.
+Professional, minimal overview of the system.
 
-## Features
+## 1. Overview
+COMPASS (Compliance Oriented Mapping & Privacy Assessment System) analyzes privacy policies (PDF, DOCX, TXT, or URL) and produces a structured GDPR compliance report. A fine‑tuned Legal‑BERT classifier determines status (compliant / ambiguous / non‑compliant). Rule indicators are shown for context only. Reports can be exported as PDF via WeasyPrint.
 
-- Hybrid chunking for robust clause segmentation.
-- Fine‑tuned Legal‑BERT classifier (primary decision source). Rule indicators are shown as context but do not override AI decisions.
-- HTML→PDF export powered by WeasyPrint for reliable Unicode wrapping and layout.
-- FastAPI endpoints for files, raw text, and URLs, returning structured JSON.
-- Simple frontend to upload, review results, and download the PDF report.
+## 2. Core Features
+1. Fine‑tuned Legal‑BERT classifier (primary decision logic).
+2. Hybrid text chunking (paragraph+sentence) to stay within model limits.
+3. Rule keyword indicators (do not override AI decision).
+4. HTML → PDF export with WeasyPrint (Unicode-safe, robust wrapping).
+5. FastAPI backend + simple static frontend.
 
-## Prerequisites
+## 3. Requirements
+| Component | Recommended |
+|-----------|------------|
+| Runtime   | Docker Desktop (GPU optional) |
+| Python (non-Docker) | 3.10+ with Cairo, Pango, GDK-PixBuf |
+| GPU (optional) | NVIDIA with CUDA (auto fallback to CPU) |
 
-- Docker Desktop (recommended) with NVIDIA GPU support for acceleration. The app automatically falls back to CPU.
-- If running outside Docker: Python 3.10+ and system libraries for WeasyPrint (Cairo/Pango/GDK‑PixBuf).
+## 4. Model Location (Option A Active)
+Fine‑tuned model lives at `training/models/legalbert_3way/` and is mounted into the container as `/app/model_store/legalbert_3way` by `docker-compose.yml`. Override with env var `MODEL_DIR` if needed.
 
-## Model location (Option A – active)
+Required model files:
+- config.json, model.safetensors, tokenizer.json, tokenizer_config.json, special_tokens_map.json, vocab.txt
 
-The fine‑tuned model is stored at `training/models/legalbert_3way/` and mounted into the backend container at `/app/model_store/legalbert_3way` via `docker-compose.yml`. You can replace this directory with your own model artifacts (config.json, model.safetensors, tokenizer files) without changing code.
-
-Optional: You can set `MODEL_DIR` env var to point to a custom path inside the container; by default the mounted path is used when present.
-
-## Run the stack
-
-1) Clone the repository
-
+## 5. Quick Start (Windows PowerShell)
 ```powershell
+# 1. Clone
 git clone <your-repo-url>
 cd COMPASS-GDPR-Auditor
-```
 
-2) Start the backend (FastAPI)
-
-```powershell
+# 2. Start backend (build first time)
 docker compose up --build
-```
 
-Backend will listen on http://localhost:8000
-
-3) Open API docs (optional)
-
-Visit http://localhost:8000/docs and try:
-
-- POST /analyze/file
-- POST /analyze/text
-- POST /analyze/url
-- POST /report/pdf (export the full PDF report)
-- GET /report/pdf/test (tiny smoke test for PDF renderer)
-- GET /system/info (reports GPU availability, torch version, WeasyPrint/pydyf versions)
-
-4) Run the frontend (static)
-
-```powershell
+# 3. (Optional) Serve frontend
 cd frontend
 python -m http.server 5173
 ```
+Backend: http://localhost:8000  |  Frontend: http://localhost:5173
 
-Open http://localhost:5173 and point it at http://localhost:8000 for the API.
+## 6. Key API Endpoints
+| Method | Path               | Purpose |
+|--------|--------------------|---------|
+| GET    | /system/info       | Runtime + versions (GPU, WeasyPrint, pydyf) |
+| POST   | /analyze/file      | Analyze uploaded PDF/DOCX/TXT |
+| POST   | /analyze/text      | Analyze raw pasted text |
+| POST   | /analyze/url       | Fetch + analyze web page |
+| POST   | /report/pdf        | Generate full PDF compliance report |
+| GET    | /report/pdf/test   | Smoke test for PDF engine |
 
-## Project structure
+## 7. Standard Workflow
+1. Start backend (`docker compose up --build`).
+2. (Optional) Serve frontend static files.
+3. Upload or paste policy text via UI (or call API directly).
+4. Review JSON status counts and per‑section details.
+5. Export PDF (`POST /report/pdf`).
+6. Monitor `/system/info` for environment diagnostics.
+
+## 8. Project Structure
 
 ```
 COMPASS-GDPR-Auditor/
@@ -82,28 +82,28 @@ COMPASS-GDPR-Auditor/
 └─ test_docs/                    # Sample inputs for quick testing
 ```
 
-## Environment variables
+## 9. Environment Variable
 
 - MODEL_DIR (optional): override the model path inside the container. By default, the model from `training/models/legalbert_3way` is mounted to `/app/model_store/legalbert_3way`.
 
-## File types supported
+## 10. Supported Input Types
 
 - PDF (text extraction via pypdf)
 - DOCX (python-docx)
 - TXT (UTF‑8)
 - URL (HTML fetched and cleaned via BeautifulSoup)
 
-## PDF generation
+## 11. PDF Export
 
 The app uses WeasyPrint for HTML→PDF export. System fonts (DejaVu) are installed in the Docker image, and styles ensure robust wrapping for long tokens and mixed Unicode. If you deploy outside Docker, install Cairo, Pango, and GDK‑PixBuf.
 
-## Troubleshooting
+## 12. Troubleshooting
 
 - PDF engine smoke test: GET `/report/pdf/test` should return a small PDF.
 - Versions: GET `/system/info` shows `weasyprint_version` and `pydyf_version`.
 - GPU availability is reported under `gpu_available`; the app still works on CPU.
 
-## Git and large files
+## 13. Git & Large Files
 
 Model weights can be large. Consider using Git LFS to store artifacts like `*.safetensors`:
 
@@ -115,17 +115,16 @@ git add .gitattributes
 
 This repository includes a `.gitignore` to exclude common caches (`__pycache__`, `.venv`, etc.) and a backend `.dockerignore` to keep Docker builds fast.
 
-## Development notes
+## 14. Development Notes
 
 - The backend no longer uses fpdf2. WeasyPrint is the only PDF engine.
 - Rule indicators are kept for transparency; the final status is always AI‑driven.
 - Duplicate model directories were removed in favor of the mount at `training/models/legalbert_3way`.
 
-## Troubleshooting
+## 15. Additional Notes
 
 - If `/report/pdf` fails, check `/system/info` for WeasyPrint/pydyf versions. They should be compatible (this repo pins them).
 - If running with GPU, ensure NVIDIA runtime is enabled in Docker Desktop. The app still works on CPU.
 
-## License
-
-TBD.
+## 16. License
+TBD
